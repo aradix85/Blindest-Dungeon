@@ -404,6 +404,9 @@ static uint32_t g_synthKeyFrame = 0xffffffffu;   // the frame we last emitted on
 bool enqueueSynthKey(uint32_t type, uint32_t scancode, uint32_t sym, uint16_t mod) {
     return enqueueSynthKeyAt(type, scancode, sym, mod, 0);
 }
+#ifdef AX_BRIDGE
+int synthKeyQueued() { return g_synthKeyCount; }       // fork: the bridge waits for an empty queue
+#endif
 bool enqueueSynthKeyAt(uint32_t type, uint32_t scancode, uint32_t sym, uint16_t mod, int frameDelay) {
     if (g_synthKeyCount >= (int)(sizeof g_synthKey / sizeof g_synthKey[0])) {
         logLine("synthkey: QUEUE FULL — dropped type=0x%x scan=%u sym=0x%x", type, scancode, sym);

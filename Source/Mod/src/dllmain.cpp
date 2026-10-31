@@ -625,6 +625,9 @@ static void traceAxContext() {
     const AxContextDef* d = currentAxDef();
     AxContext c = d ? d->ctx : AX_NONE;
     if (c != last) { logLine("axcontext -> %s", d ? d->name : "none"); last = c; }
+#ifdef AX_BRIDGE
+    bridgeNoteContext(d ? d->name : "none");
+#endif
 }
 
 // ---- Per-context keyboard handlers ----
@@ -1072,6 +1075,9 @@ int OurPoll(void* ev) {
     if (g_enabled) {
         DWORD now = GetTickCount();
         traceAxContext();
+#ifdef AX_BRIDGE
+        bridgePump(g_base);       // fork: keys sent over the bridge, on the main thread
+#endif
         serviceInputProbe(g_base);
         servicePad(g_base);
         servicePadMap(g_base);

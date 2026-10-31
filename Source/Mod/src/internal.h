@@ -4,6 +4,7 @@
 #include <windows.h>
 #include "game/offsets.h"
 #include "core/axstrings.h"
+#include "core/bridge.h"   // fork: the Claude bridge (empty unless AX_BRIDGE)
 
 static const int MAILBOX_SZ = 16384;
 static const int SPEECH_QUEUE_MAX = 24;

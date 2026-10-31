@@ -642,6 +642,13 @@ const char* axSpeechErrName(int prismError) {
 }
 
 bool speakUtf8(const char* utf8, bool interrupt, int* outErr) {
+#ifdef AX_BRIDGE
+    bridgeNoteSpeech(utf8, interrupt);                  // fork: the bridge hears every line
+    if (bridgeMuted()) {                                // ...and can keep it off the reader
+        if (outErr) *outErr = (int)PRISM_OK;
+        return true;
+    }
+#endif
     if (!g_prismBackend) {
         if (outErr) *outErr = (int)PRISM_ERROR_NOT_INITIALIZED;
         return false;
@@ -768,24 +775,36 @@ static void axRotateLogAtLaunch(const char* path) {
 
 void logLine(const char* fmt, ...) {
     AxDebugLogState& s = axDebugState();
+#ifndef AX_BRIDGE
     if (!s.enabled) return;
+#endif
     char line[2048];
     va_list ap; va_start(ap, fmt);
     _vsnprintf(line, sizeof line, fmt, ap);
     va_end(ap);
     line[sizeof line - 1] = 0;
+#ifdef AX_BRIDGE
+    bridgeNoteLog(line);                                // fork: the bridge keeps the log in memory
+    if (!s.enabled) return;
+#endif
     appendLogLine(s.path, LOG_CAP_BYTES, line);
 }
 
 // ---- One-shot PROBE dumps ----
 void logDump(const char* fmt, ...) {
     AxDebugLogState& s = axDebugState();
+#ifndef AX_BRIDGE
     if (!s.enabled) return;
+#endif
     char line[2048];
     va_list ap; va_start(ap, fmt);
     _vsnprintf(line, sizeof line, fmt, ap);
     va_end(ap);
     line[sizeof line - 1] = 0;
+#ifdef AX_BRIDGE
+    bridgeNoteLog(line);
+    if (!s.enabled) return;
+#endif
     appendLogLine(s.path, LOG_CAP_BYTES, line);
 }
 
@@ -859,6 +878,9 @@ static void axExpandAbbrevText(const char* in, char* out, size_t outsz) {
 
 void postSpeech(const char* text, bool interrupt, SpeechKind kind) {
     if (kind == SPK_AUTO) kind = interrupt ? SPK_NAV : SPK_EVENT;
+#ifdef AX_BRIDGE
+    bridgeNotePosted(text, (int)kind);                  // fork: remembers the last focus line
+#endif
     // ---- A STRAY ".." IS COLLAPSED HERE, ONCE FOR EVERY LINE ----
     char clean[MAILBOX_SZ];
     {

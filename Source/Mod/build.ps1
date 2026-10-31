@@ -1,4 +1,12 @@
 # Builds version.dll (the mod) using MSVC.
+#   -Bridge    fork: compile in the loopback Claude bridge (/DAX_BRIDGE, output in build-bridge\)
+#   -NoDeploy  build and check only, never copy into the game folder
+#   -GameDir   the folder that holds Darkest.exe (default: the standard Steam location)
+param(
+    [switch]$Bridge,
+    [switch]$NoDeploy,
+    [string]$GameDir = "C:\Program Files (x86)\Steam\steamapps\common\DarkestDungeon\_windows\win64"
+)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -9,7 +17,10 @@ if (-not $vs) { throw "MSVC C++ tools not found. Is the VCTools workload install
 $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
 if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found: $vcvars" }
 
-New-Item -ItemType Directory -Force "$root\build" | Out-Null
+$outDir = if ($Bridge) { Join-Path $root "build-bridge" } else { Join-Path $root "build" }
+$defs   = if ($Bridge) { "/DAX_BRIDGE" } else { "" }
+$libs   = if ($Bridge) { "ws2_32.lib" } else { "" }
+New-Item -ItemType Directory -Force $outDir | Out-Null
 
 # ---- Embed the translations ----
 $langDir = Join-Path $root "lang"
@@ -46,16 +57,16 @@ Write-Host "[+] Embedded $($langNames.Count) translation(s) -> src\core\axlang_e
 $bat = @"
 @echo off
 call "$vcvars" >nul 2>nul
-cd /d "$root\build"
-cl /nologo /LD /O2 /MT /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS /DPRISM_STATIC /I "$root\lib\prism" /I "$root\src" /Fe:version.dll "$root\src\dllmain.cpp" "$root\src\core\speech.cpp" "$root\src\core\gameread.cpp" "$root\src\core\subtitles.cpp" "$root\src\core\hooks.cpp" "$root\src\game\gamebuild.cpp" "$root\src\core\axstrings.cpp" "$root\src\core\find.cpp" "$root\src\core\modtutorial.cpp" "$root\src\core\msgview.cpp" "$root\src\core\updatecheck.cpp" "$root\src\core\tooltip.cpp" "$root\src\core\keywords.cpp" "$root\src\frontend\loading.cpp" "$root\src\frontend\sharedui.cpp" "$root\src\frontend\options.cpp" "$root\src\frontend\dialog.cpp" "$root\src\frontend\display.cpp" "$root\src\frontend\tutorial.cpp" "$root\src\frontend\naming.cpp" "$root\src\frontend\pause.cpp" "$root\src\frontend\credits.cpp" "$root\src\input\synth.cpp" "$root\src\input\layout.cpp" "$root\src\input\pad.cpp" "$root\src\input\padmap.cpp" "$root\src\town\estate.cpp" "$root\src\town\map.cpp" "$root\src\town\districts.cpp" "$root\src\town\embark.cpp" "$root\src\town\provision.cpp" "$root\src\town\buildings.cpp" "$root\src\town\party.cpp" "$root\src\town\trinkets.cpp" "$root\src\town\exchange.cpp" "$root\src\town\barks.cpp" "$root\src\town\events.cpp" "$root\src\town\menupanel.cpp" "$root\src\raid\resting.cpp" "$root\src\raid\raidmap.cpp" "$root\src\raid\dungeonview.cpp" "$root\src\raid\actionbar.cpp" "$root\src\raid\camp.cpp" "$root\src\raid\loot.cpp" "$root\src\raid\eventscroll.cpp" "$root\src\raid\inventory.cpp" "$root\src\raid\light.cpp" "$root\src\raid\combattext.cpp" "$root\src\raid\results.cpp" "$root\src\raid\quest.cpp" "$root\src\sheet\charsheet.cpp" "$root\src\sheet\composers.cpp" "$root\src\settings\keymap.cpp" "$root\src\settings\modmenu.cpp" "$root\src\dlc\color_of_madness\wave.cpp" "$root\src\dlc\butchers_circus\dueling.cpp" "$root\src\dlc\butchers_circus\ring.cpp" "$root\src\dlc\butchers_circus\pit.cpp" "$root\src\dlc\butchers_circus\matchresults.cpp" "$root\src\dlc\butchers_circus\prizebox.cpp" "$root\src\dlc\butchers_circus\rankings.cpp" "$root\src\dlc\butchers_circus\banner.cpp" /link /WHOLEARCHIVE:"$root\lib\prism\prism-static.lib" ole32.lib onecore.lib runtimeobject.lib uiautomationcore.lib rpcrt4.lib PowrProf.lib user32.lib shell32.lib winhttp.lib
+cd /d "$outDir"
+cl /nologo /LD /O2 /MT /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS /DPRISM_STATIC $defs /I "$root\lib\prism" /I "$root\src" /Fe:version.dll "$root\src\dllmain.cpp" "$root\src\core\speech.cpp" "$root\src\core\gameread.cpp" "$root\src\core\subtitles.cpp" "$root\src\core\hooks.cpp" "$root\src\core\bridge.cpp" "$root\src\game\gamebuild.cpp" "$root\src\core\axstrings.cpp" "$root\src\core\find.cpp" "$root\src\core\modtutorial.cpp" "$root\src\core\msgview.cpp" "$root\src\core\updatecheck.cpp" "$root\src\core\tooltip.cpp" "$root\src\core\keywords.cpp" "$root\src\frontend\loading.cpp" "$root\src\frontend\sharedui.cpp" "$root\src\frontend\options.cpp" "$root\src\frontend\dialog.cpp" "$root\src\frontend\display.cpp" "$root\src\frontend\tutorial.cpp" "$root\src\frontend\naming.cpp" "$root\src\frontend\pause.cpp" "$root\src\frontend\credits.cpp" "$root\src\input\synth.cpp" "$root\src\input\layout.cpp" "$root\src\input\pad.cpp" "$root\src\input\padmap.cpp" "$root\src\town\estate.cpp" "$root\src\town\map.cpp" "$root\src\town\districts.cpp" "$root\src\town\embark.cpp" "$root\src\town\provision.cpp" "$root\src\town\buildings.cpp" "$root\src\town\party.cpp" "$root\src\town\trinkets.cpp" "$root\src\town\exchange.cpp" "$root\src\town\barks.cpp" "$root\src\town\events.cpp" "$root\src\town\menupanel.cpp" "$root\src\raid\resting.cpp" "$root\src\raid\raidmap.cpp" "$root\src\raid\dungeonview.cpp" "$root\src\raid\actionbar.cpp" "$root\src\raid\camp.cpp" "$root\src\raid\loot.cpp" "$root\src\raid\eventscroll.cpp" "$root\src\raid\inventory.cpp" "$root\src\raid\light.cpp" "$root\src\raid\combattext.cpp" "$root\src\raid\results.cpp" "$root\src\raid\quest.cpp" "$root\src\sheet\charsheet.cpp" "$root\src\sheet\composers.cpp" "$root\src\settings\keymap.cpp" "$root\src\settings\modmenu.cpp" "$root\src\dlc\color_of_madness\wave.cpp" "$root\src\dlc\butchers_circus\dueling.cpp" "$root\src\dlc\butchers_circus\ring.cpp" "$root\src\dlc\butchers_circus\pit.cpp" "$root\src\dlc\butchers_circus\matchresults.cpp" "$root\src\dlc\butchers_circus\prizebox.cpp" "$root\src\dlc\butchers_circus\rankings.cpp" "$root\src\dlc\butchers_circus\banner.cpp" /link /WHOLEARCHIVE:"$root\lib\prism\prism-static.lib" ole32.lib onecore.lib runtimeobject.lib uiautomationcore.lib rpcrt4.lib PowrProf.lib user32.lib shell32.lib winhttp.lib $libs
 if errorlevel 1 exit /b 1
 "@
 $batPath = Join-Path $env:TEMP "dd_mod_build.bat"
 Set-Content -Path $batPath -Value $bat -Encoding ascii
 cmd /c "`"$batPath`""
 if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
-Write-Host "`n[+] Build OK. Outputs in $root\build" -ForegroundColor Green
-Get-ChildItem "$root\build" -Include version.dll -Recurse | Select-Object Name,Length
+Write-Host "`n[+] Build OK$(if ($Bridge) { ' (with bridge)' }). Outputs in $outDir" -ForegroundColor Green
+Get-ChildItem $outDir -Include version.dll -Recurse | Select-Object Name,Length
 
 # ---- The proxy's two gates ----
 $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -69,7 +80,7 @@ function AxExportRows($dll) {
     return $rows
 }
 $sysRows = AxExportRows (Join-Path $env:WINDIR "System32\version.dll")
-$ourRows = AxExportRows "$root\build\version.dll"
+$ourRows = AxExportRows (Join-Path $outDir "version.dll")
 $bad = @()
 foreach ($k in $sysRows.Keys) {
     if (-not $ourRows.ContainsKey($k)) { $bad += "MISSING export $k"; continue }
@@ -81,7 +92,8 @@ if ($bad.Count) { $bad | ForEach-Object { Write-Host "    $_" -ForegroundColor R
 Write-Host "[+] Proxy gate 1: export table equals System32\version.dll ($($sysRows.Count) names, ordinals, all forwarders)" -ForegroundColor Green
 
 # ---- Deploy ----
-$gameDir = "C:\Program Files (x86)\Steam\steamapps\common\DarkestDungeon\_windows\win64"
+if ($NoDeploy) { Write-Host "[i] -NoDeploy: not copied into the game folder." -ForegroundColor Cyan; return }
+$gameDir = $GameDir
 $target  = Join-Path $gameDir "version.dll"
 
 if (-not (Test-Path $gameDir)) {
@@ -112,7 +124,7 @@ if (Get-Process -Name "Darkest*" -ErrorAction SilentlyContinue) {
     return
 }
 try {
-    Copy-Item "$root\build\version.dll" $target -Force -ErrorAction Stop
+    Copy-Item (Join-Path $outDir "version.dll") $target -Force -ErrorAction Stop
     Write-Host "[+] Deployed -> $target" -ForegroundColor Green
 } catch {
     Write-Host "[!] Deploy FAILED: $_" -ForegroundColor Red

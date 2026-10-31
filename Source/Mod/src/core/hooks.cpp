@@ -472,6 +472,9 @@ static DWORD WINAPI SpeechThread(LPVOID) {
     }
     speakUtf8("Accessibility mod loaded.", true);
     axUpdateCheckStart();
+#ifdef AX_BRIDGE
+    bridgeStart();                                      // fork: the loopback bridge
+#endif
 
     DWORD handoverTick = 0;
     bool  sawSpeaking  = false;

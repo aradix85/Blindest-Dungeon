@@ -17,6 +17,8 @@
 // Keys are pressed by bridgePump() on the game's main thread (OurPoll), through axRoutePadKey --
 // the same path the controller translation uses, so a key behaves exactly like the player's.
 // Env: DDACCESS_BRIDGE_PORT (default 8773), DDACCESS_NO_BRIDGE=1, DDACCESS_MUTE=1 (start muted).
+// The launcher starts the game through Steam, so env vars rarely arrive: the file
+// %LOCALAPPDATA%\DarkestAccess\bridge-mute also starts the session muted.
 #ifdef AX_BRIDGE
 
 #include <winsock2.h>
@@ -460,6 +462,15 @@ DWORD WINAPI serverThread(LPVOID) {
     }
 }
 
+bool muteFlagFile() {
+    const char* local = getenv("LOCALAPPDATA");
+    if (!local || !*local) return false;
+    char path[MAX_PATH];
+    _snprintf(path, sizeof path, "%s\\DarkestAccess\\bridge-mute", local);
+    path[sizeof path - 1] = 0;
+    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
+}
+
 }  // namespace
 
 // ---- Public hooks ----
@@ -467,7 +478,7 @@ bool bridgeMuted() {
     LONG m = g_brMuted;
     if (m < 0) {
         const char* e = getenv("DDACCESS_MUTE");
-        InterlockedCompareExchange(&g_brMuted, (e && *e == '1') ? 1 : 0, -1);
+        InterlockedCompareExchange(&g_brMuted, ((e && *e == '1') || muteFlagFile()) ? 1 : 0, -1);
         m = g_brMuted;
     }
     return m == 1;

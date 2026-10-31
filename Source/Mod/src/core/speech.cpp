@@ -895,6 +895,19 @@ void postSpeech(const char* text, bool interrupt, SpeechKind kind) {
 #ifdef AX_BRIDGE
     bridgeNotePosted(text, (int)kind);                  // fork: remembers the last focus line
 #endif
+    // ---- Abbreviations are expanded (or the fence dropped) first, so the collapse below also
+    //      catches a ".." that only meets once a fence byte between the two stops is gone ----
+    char expanded[MAILBOX_SZ];
+    if (axExpandAbbreviations()) {
+        axExpandAbbrevText(text, expanded, sizeof expanded);
+        text = expanded;
+    } else if (strchr(text, AX_NOEXPAND_OPEN) || strchr(text, AX_NOEXPAND_CLOSE)) {
+        size_t n = 0;                                            // no expansion: the fence goes
+        for (size_t i = 0; text[i] && n < MAILBOX_SZ - 1; i++)
+            if (text[i] != AX_NOEXPAND_OPEN && text[i] != AX_NOEXPAND_CLOSE) expanded[n++] = text[i];
+        expanded[n] = 0;
+        text = expanded;
+    }
     // ---- A STRAY ".." IS COLLAPSED HERE, ONCE FOR EVERY LINE ----
     char clean[MAILBOX_SZ];
     {
@@ -906,17 +919,6 @@ void postSpeech(const char* text, bool interrupt, SpeechKind kind) {
         }
         clean[n] = 0;
         text = clean;
-    }
-    char expanded[MAILBOX_SZ];
-    if (axExpandAbbreviations()) {
-        axExpandAbbrevText(text, expanded, sizeof expanded);
-        text = expanded;
-    } else if (strchr(text, AX_NOEXPAND_OPEN) || strchr(text, AX_NOEXPAND_CLOSE)) {
-        size_t n = 0;                                            // no expansion: the fence goes
-        for (size_t i = 0; text[i] && n < MAILBOX_SZ - 1; i++)
-            if (text[i] != AX_NOEXPAND_OPEN && text[i] != AX_NOEXPAND_CLOSE) expanded[n++] = text[i];
-        expanded[n] = 0;
-        text = expanded;
     }
     if (kind == SPK_NAV) {
         if (text != g_lastNavLine) {

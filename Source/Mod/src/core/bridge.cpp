@@ -7,6 +7,7 @@
 //   GET  /speech?since=N&wait=MS&limit=K   lines handed to the screen reader (full text)
 //   GET  /log?since=N&grep=TEXT&wait=MS&limit=K   the debug-log stream (file on or off)
 //   GET  /context                     active mod context + the last focus (nav) line
+//   GET  /map                         the raid map as the player hears it, one line per area
 //   POST /input?gap=MS  body: keys    e.g. "down down enter", "shift+d", "wait:500", "f10"
 //   GET  /input                       queue state;  POST /input?clear=1 empties the queue
 //   POST /mute  body: on|off          silence the reader (lines are still captured)
@@ -118,6 +119,20 @@ struct BrShared {
     BrShared() : lastNavTick(0), gap(150), keysSent(0) { InitializeCriticalSection(&cs); }
 };
 BrShared& shared() { static BrShared s; return s; }
+
+// ---- Main-thread snapshots (GET /map): the HTTP thread asks, bridgePump answers ----
+struct BrSnap {
+    CRITICAL_SECTION cs, serial;     // cs guards the fields; serial lets one request in at a time
+    HANDLE done;
+    bool want;
+    std::string text;
+    BrSnap() : want(false) {
+        InitializeCriticalSection(&cs);
+        InitializeCriticalSection(&serial);
+        done = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    }
+};
+BrSnap& snap() { static BrSnap s; return s; }
 
 volatile LONG g_brMuted = -1;                  // -1 = not read from the environment yet
 const char* volatile g_brContext = "none";     // always a string literal from the context table
@@ -236,6 +251,7 @@ const char* kHelp =
     "GET  /speech?since=N&wait=MS&limit=K\n"
     "GET  /log?since=N&grep=TEXT&wait=MS&limit=K\n"
     "GET  /context\n"
+    "GET  /map\n"
     "POST /input?gap=MS   body: keys, e.g. \"down down enter\", \"shift+d\", \"wait:500\"\n"
     "GET  /input          POST /input?clear=1\n"
     "POST /mute           body: on|off\n";
@@ -284,6 +300,22 @@ int route(const std::string& method, const std::string& target, const std::strin
         }
         *resp = r.dump(since, grep, (size_t)limit);
         return 200;
+    }
+
+    if (path == "/map") {
+        BrSnap& m = snap();
+        EnterCriticalSection(&m.serial);
+        EnterCriticalSection(&m.cs);
+        m.want = true;
+        ResetEvent(m.done);
+        LeaveCriticalSection(&m.cs);
+        bool ok = WaitForSingleObject(m.done, 3000) == WAIT_OBJECT_0;
+        EnterCriticalSection(&m.cs);
+        m.want = false;
+        *resp = ok ? m.text : std::string("the game thread did not answer (paused or loading?)\n");
+        LeaveCriticalSection(&m.cs);
+        LeaveCriticalSection(&m.serial);
+        return ok ? 200 : 503;
     }
 
     if (path == "/context" || path == "/focus") {
@@ -521,11 +553,27 @@ void bridgeStart() {
 }
 
 // ---- The key pump (main thread) ----
+static void brServeSnapshot(uintptr_t base) {
+    BrSnap& m = snap();
+    EnterCriticalSection(&m.cs);
+    bool want = m.want;
+    LeaveCriticalSection(&m.cs);
+    if (!want) return;
+    static char buf[96 * 1024];
+    int n = mapSnapshot(base, buf, sizeof buf);
+    EnterCriticalSection(&m.cs);
+    m.text.assign(buf, n > 0 ? (size_t)n : 0);
+    m.want = false;
+    LeaveCriticalSection(&m.cs);
+    SetEvent(m.done);
+}
+
 void bridgePump(uintptr_t base) {
     static bool  upPending = false;
     static BrKey up;
     static DWORD nextAt = 0;
     DWORD now = GetTickCount();
+    brServeSnapshot(base);
 
     if (upPending) {                                    // the release half, one frame later
         axRoutePadKey(base, SDL_EVT_KEYUP, up.sym, up.mod, 0, false);

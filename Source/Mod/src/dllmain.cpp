@@ -1247,6 +1247,16 @@ static void axSayAgain(uintptr_t base) {
     }
 
     const AxContextDef* cur = currentAxDef();
+    char narr[2048];
+    if (subLastNarration(narr, sizeof narr)) {          // no message: the narrator's last passage
+        char utter[2304];
+        _snprintf(utter, sizeof utter, axs(AXS_SAY_AGAIN_NARRATION_FMT), narr);
+        utter[sizeof utter - 1] = 0;
+        logLine("sayagain: no message (context \"%s\") -- re-reading the last narration",
+                cur ? cur->name : "none");
+        postSpeech(utter);
+        return;
+    }
     logLine("sayagain: no message on screen (context \"%s\")", cur ? cur->name : "none");
     postSpeech(axs(AXS_SAY_AGAIN_NOTHING));
 }

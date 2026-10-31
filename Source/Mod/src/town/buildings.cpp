@@ -451,13 +451,29 @@ static void bldTrackFxTexts(int i, const char** cur, const char** nxt) {
     }
 }
 
+// The game's own sentence for a whole upgrade tree ("Improves the meditation facilities.").
+static bool bldTreeDescription(uintptr_t base, const BldTrack* t, char* out, int outsz) {
+    out[0] = 0;
+    if (!t->id[0]) return false;
+    char key[96], raw[320];
+    _snprintf(key, sizeof key, "upgrade_tree_tooltip_description_%s", t->id);
+    key[sizeof key - 1] = 0;
+    if (!resolveKey(base, key, raw, sizeof raw) || !raw[0]) return false;
+    stripMarkup(raw, out, outsz);
+    return out[0] != 0;
+}
+
 static void bldSpeakTrackRow(uintptr_t base, uintptr_t root, uintptr_t panel, const char* prefix) {
     int n = bldCollectTracks(base, root, panel, false);
     if (n <= 0) { postSpeech(axs(AXS_BLD_NO_TRACKS)); return; }
     if (g_bldUpRow >= n) g_bldUpRow = n - 1;
     if (g_bldUpRow < 0)  g_bldUpRow = 0;
-    char row[768], utter[MAILBOX_SZ];
+    char row[1024], utter[MAILBOX_SZ];
     bldTrackRowText(base, g_bldUpRow, row, sizeof row);
+    char desc[320];                       // a tree the mod has no effect table for leans on it
+    if (bldTreeDescription(base, &g_bldTracks[g_bldUpRow], desc, sizeof desc) &&
+        (axTipWanted() || !g_bldTracks[g_bldUpRow].fx))
+        axTipGlue(row, sizeof row, desc);
     if (axTipWanted()) {
         const char* cur; const char* nxt;
         bldTrackFxTexts(g_bldUpRow, &cur, &nxt);
@@ -1149,9 +1165,9 @@ bool bldClassNameByHash(uintptr_t base, uint32_t want, char* out, int outsz) {
         }
     }
     static const char* const kClassIds[] = {
-        "abomination", "antiquarian", "arbalest", "bounty_hunter", "crusader", "flagellant",
-        "grave_robber", "hellion", "highwayman", "houndmaster", "jester", "leper", "man_at_arms",
-        "musketeer", "occultist", "plague_doctor", "shieldbreaker", "vestal",
+        "abomination", "antiquarian", "arbalest", "bounty_hunter", "crusader", "duelist",
+        "flagellant", "grave_robber", "hellion", "highwayman", "houndmaster", "jester", "leper",
+        "man_at_arms", "musketeer", "occultist", "plague_doctor", "runaway", "shieldbreaker", "vestal",
     };
     for (int i = 0; i < (int)(sizeof kClassIds / sizeof kClassIds[0]); i++) {
         if (resHash(kClassIds[i]) != want) continue;

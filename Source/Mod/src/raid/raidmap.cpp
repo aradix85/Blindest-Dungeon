@@ -481,6 +481,81 @@ static int corridorDirToEnd(uintptr_t root, long corIdx, int ti, int endTile, lo
     return deltaToDir(tx - fx, ty - fy);
 }
 
+// ---- THE WAY THERE: room-to-room hops from the party, as arrow directions ----
+static const int MAP_ROUTE_AREAS_MAX = 128;
+static const int MAP_ROUTE_SPOKEN    = 6;      // hops named before "and on"
+
+static int mapRouteDirs(uintptr_t root, long from, long to, int* dirs, int maxDirs) {
+    long n = mapAreaCount(root);
+    if (n <= 0 || n > MAP_ROUTE_AREAS_MAX || from < 0 || to < 0 || from >= n || to >= n) return -1;
+    if (from == to) return 0;
+    long prev[MAP_ROUTE_AREAS_MAX], queue[MAP_ROUTE_AREAS_MAX];
+    int  pdir[MAP_ROUTE_AREAS_MAX];
+    bool seen[MAP_ROUTE_AREAS_MAX] = { false };
+    int qh = 0, qt = 0;
+    queue[qt++] = from; seen[from] = true; prev[from] = -1;
+    while (qh < qt && !seen[to]) {
+        long r = queue[qh++];
+        MapExit ex[AREA_EXIT_SLOTS];
+        int ne = roomExits(root, r, ex, AREA_EXIT_SLOTS);
+        for (int e = 0; e < ne; e++) {
+            long nx = ex[e].farRoomIdx;
+            if (nx < 0 || nx >= n || seen[nx] || ex[e].dir < 0) continue;
+            seen[nx] = true; prev[nx] = r; pdir[nx] = ex[e].dir;
+            queue[qt++] = nx;
+        }
+    }
+    if (!seen[to]) return -1;
+    int hops = 0;
+    for (long c = to; c != from; c = prev[c]) hops++;
+    int k = hops;
+    for (long c = to; c != from; c = prev[c]) { k--; if (k < maxDirs) dirs[k] = pdir[c]; }
+    return hops;
+}
+
+// "2 rooms away: right, then up" -- from the party's room, or from the hallway end it is nearer.
+static bool mapRouteText(uintptr_t root, long target, char* out, int outsz) {
+    out[0] = 0;
+    int pa = 0, pt = 0;
+    mapFindParty(root, &pa, &pt);
+    uintptr_t parea = mapAreaAt(root, pa);
+    if (!parea) return false;
+    int32_t pkind = -1;
+    safeReadU32(parea + AREA_KIND_OFF, (uint32_t*)&pkind);
+    long from = pa;
+    char via[64] = { 0 };
+    if (pkind == 1) {                                   // in a hallway: from its nearer end room
+        long tiles = mapAreaTiles(parea);
+        uint32_t r0 = 0, r1 = 0;
+        corridorEnds(parea, tiles, &r0, &r1);
+        uint32_t end = (pt * 2 < tiles) ? (r0 ? r0 : r1) : (r1 ? r1 : r0);
+        if (!end) return false;
+        from = mapAreaIndexById(root, end);
+        if (from < 0) return false;
+        mapAreaLabel(end, 0, via, sizeof via);
+    }
+    int dirs[MAP_ROUTE_SPOKEN];
+    int hops = mapRouteDirs(root, from, target, dirs, MAP_ROUTE_SPOKEN);
+    if (hops <= 0) return false;                        // here already, or no known way
+    char way[192], tmp[192];
+    _snprintf(way, sizeof way, "%s", dirName(dirs[0]));
+    for (int h = 1; h < hops && h < MAP_ROUTE_SPOKEN; h++) {
+        _snprintf(tmp, sizeof tmp, axs(AXS_MAP_ROUTE_THEN_FMT), way, dirName(dirs[h]));
+        memcpy(way, tmp, sizeof way);
+    }
+    if (hops > MAP_ROUTE_SPOKEN) {
+        _snprintf(tmp, sizeof tmp, axs(AXS_MAP_ROUTE_MORE_FMT), way);
+        memcpy(way, tmp, sizeof way);
+    }
+    way[sizeof way - 1] = 0;
+    if (via[0] && hops == 1) _snprintf(out, outsz, axs(AXS_MAP_ROUTE_FROM_1_FMT), via, way);
+    else if (via[0])         _snprintf(out, outsz, axs(AXS_MAP_ROUTE_FROM_FMT), hops, via, way);
+    else if (hops == 1)      _snprintf(out, outsz, axs(AXS_MAP_ROUTE_1_FMT), way);
+    else                     _snprintf(out, outsz, axs(AXS_MAP_ROUTE_FMT), hops, way);
+    out[outsz - 1] = 0;
+    return true;
+}
+
 // ---- Announcement builders ----
 static void mapDescribeArea(uintptr_t base, uintptr_t root, long i, char* out, int outsz,
                             bool withExits = true) {
@@ -513,6 +588,9 @@ static void mapDescribeArea(uintptr_t base, uintptr_t root, long i, char* out, i
     if (kind == 0) {   // room = 1 tile
         if (!here && tileVisited(area, 0)) o += _snprintf(out + o, outsz - o, ", %s", axs(AXS_MAP_VISITED));
         if (!withExits) { out[outsz - 1] = 0; return; }
+        char route[256];
+        if (!here && mapRouteText(root, i, route, sizeof route))
+            o += _snprintf(out + o, outsz - o, ". %s", route);
         MapExit exits[AREA_EXIT_SLOTS];
         int n = roomExits(root, i, exits, AREA_EXIT_SLOTS);
         char ex[256]; int eo = 0; ex[0] = 0; int nex = 0;
@@ -2271,3 +2349,43 @@ void serviceVisitedWatch(uintptr_t base) {                                  // e
     g_vwLastArea = live; g_vwLastX = pxr; g_vwLastY = pyr;
     vwMark(live, areaNearestTileP(live, u32AsFloatM(pxr), u32AsFloatM(pyr)));
 }
+
+#ifdef AX_BRIDGE
+// ---- THE WHOLE MAP AS TEXT (fork, assistant bridge GET /map) ----
+// One line per area and per marked hallway tile, worded exactly as the player hears it, with
+// the grid x,y so the assistant can lay the rooms out. The same secret-room gate as Find.
+// Columns: kind<TAB>area<TAB>tile<TAB>x,y<TAB>text. Main thread only.
+int mapSnapshot(uintptr_t base, char* out, int outsz) {
+    if (!out || outsz <= 0) return 0;
+    out[0] = 0;
+    int o = 0;
+    uintptr_t root = mapRoot(base);
+    if (!root || mapAreaCount(root) <= 0) {
+        int r = _snprintf(out, outsz, "no map\n");
+        out[outsz - 1] = 0;
+        return r < 0 ? outsz - 1 : r;
+    }
+    char line[1200], lbl[96];
+    int pa = 0, pt = 0;
+    mapFindParty(root, &pa, &pt);
+    mapAreaLabelEx(root, mapAreaAt(root, pa), lbl, sizeof lbl);
+    mapDescribeTile(base, root, pa, pt, line, sizeof line);
+    int r = _snprintf(out + o, outsz - o, "party\t%d\t%d\t%s\t%s\n", pa, pt, lbl, line);
+    if (r < 0) { out[outsz - 1] = 0; return outsz - 1; }
+    o += r;
+    static MapFindEntry list[MAP_FIND_MAX];
+    int n = mapFindBuild(root, list, MAP_FIND_MAX);
+    for (int k = 0; k < n; k++) {
+        const MapFindEntry& e = list[k];
+        float x = 0, y = 0;
+        tileXY(root, e.area, e.tile < 0 ? 0 : e.tile, &x, &y);
+        if (e.tile < 0) mapDescribeArea(base, root, e.area, line, sizeof line, true);
+        else            mapDescribeTile(base, root, e.area, e.tile, line, sizeof line);
+        r = _snprintf(out + o, outsz - o, "%s\t%d\t%d\t%.0f,%.0f\t%s\n",
+                      e.tile < 0 ? "area" : "tile", e.area, e.tile, x, y, line);
+        if (r < 0) { out[outsz - 1] = 0; return outsz - 1; }
+        o += r;
+    }
+    return o;
+}
+#endif

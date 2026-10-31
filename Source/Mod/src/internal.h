@@ -162,6 +162,7 @@ unsigned char axAsciiLower(unsigned char c);
 
 // ---- The game's own subtitles (core/subtitles.cpp) ----
 void serviceSubtitles(uintptr_t base);
+bool subLastNarration(char* out, int outsz);   // the last narrator passage, "" = none yet
 bool subMovieTrackUp(uintptr_t base);           // a cinematic's subtitle track is live (the
 bool axIsMovie();
 bool routeMovieKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repeat);

@@ -15,4 +15,5 @@ void bridgeNoteLog(const char* line);                 // logLine / logDump, log 
 void bridgeNoteContext(const char* name);             // traceAxContext, every frame
 bool bridgeMuted();                                   // speakUtf8 skips the reader while true
 int  synthKeyQueued();                                // input/synth.cpp: keys still waiting
+int  mapSnapshot(uintptr_t base, char* out, int outsz); // raid/raidmap.cpp: GET /map (main thread)
 #endif

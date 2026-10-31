@@ -13,6 +13,28 @@ static char s_subLast[MAILBOX_SZ];
 
 static bool s_subLogged = false;
 
+// ---- THE LAST NARRATION: the chunks of one passage, kept so comma can read it again ----
+static const int   SUB_PASSAGE_MAX    = 2048;
+static const DWORD SUB_PASSAGE_GAP_MS = 6000;   // a longer silence starts a new passage
+static char  s_passage[SUB_PASSAGE_MAX];
+static DWORD s_passageTick = 0;
+
+static void subRemember(const char* line) {
+    DWORD now = GetTickCount();
+    if (now - s_passageTick > SUB_PASSAGE_GAP_MS) s_passage[0] = 0;
+    s_passageTick = now;
+    size_t n = strlen(s_passage);
+    _snprintf(s_passage + n, sizeof s_passage - n, "%s%s", n ? " " : "", line);
+    s_passage[sizeof s_passage - 1] = 0;
+}
+
+bool subLastNarration(char* out, int outsz) {
+    if (!out || outsz <= 0) return false;
+    _snprintf(out, outsz, "%s", s_passage);
+    out[outsz - 1] = 0;
+    return out[0] != 0;
+}
+
 static bool subIsMissSentinel(const char* s) {
     return (s[0] == '[' && s[1] == '<') || strstr(s, "error_not_localized") != nullptr;
 }
@@ -138,5 +160,7 @@ void serviceSubtitles(uintptr_t base) {
                 movie ? "present" : "none", line);
     }
 
+    subRemember(line);
+    if (g_raidDisplay) clogAdd(line);                 // in a raid the "." log keeps the narrator too
     postSpeech(line, false, SPK_EVENT);
 }

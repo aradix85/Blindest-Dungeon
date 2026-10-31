@@ -599,6 +599,10 @@ void bridgePump(uintptr_t base) {
         return;
     }
     g_inputIsController = false;                        // keyboard wording, as for a real key
+    if (g_preambleHold) {                               // OurPoll releases it on a REAL event only;
+        g_preambleHold = false;                         // a bridge key never passes through there
+        logLine("bridge: preamble hold released by a bridge key");
+    }
     bool claimed = axRoutePadKey(base, SDL_EVT_KEYDOWN, k.sym, k.mod, 0, true);
     logLine("bridge: key \"%s\" sym=0x%x mod=0x%x -> %s", k.name.c_str(), k.sym, (unsigned)k.mod,
             claimed ? "claimed by the mod" : "passed to the game");

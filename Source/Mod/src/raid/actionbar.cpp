@@ -2098,25 +2098,26 @@ bool abActivate(uintptr_t base, const ActionItem* it, int slotCount, int abCurso
     }
 }
 
-// ---- 1-4 ON THE SKILL THE GAME ALREADY HOLDS ----
-// At a hero's turn the game re-selects the skill that hero used last. The game's own 1-4 key
-// on that skill changes nothing, so no arming edge reaches serviceGameArmedSkill and the press
-// was silent. This one case is claimed: the target list opens on the held skill.
-bool abHeldSkillHotkey(uintptr_t base, int skillIdx) {
-    if (g_tsActive || campInSkillPhase(base)) return false;
-    uintptr_t hero = abSelectedHero(base), held = 0;
-    if (!hero || !safeReadPtr(hero + ACTOR_CUR_SKILL_OFF, &held) || !held) return false;
+// ---- 1-4: THE SKILL IN THAT SLOT, THROUGH THE SAME PATH AS ENTER ON THE BAR ----
+// Passed to the game, the key failed silently whenever the game refused it (a skill used from
+// the wrong rank, not this hero's turn) and changed nothing on the skill the game re-selects at
+// turn start. Through abActivate the player hears the reason, or the target list opens.
+bool abSkillHotkey(uintptr_t base, int skillIdx) {
+    if (g_tsActive || campInSkillPhase(base)) return false;   // camp keeps the game's own keys
     ActionItem items[AB_MAX_ITEMS];
     const int n = abBuildBar(base, items, AB_MAX_ITEMS);
     const int slots = abSlotCount(items, n);
     for (int i = 0; i < n; i++) {
         if (items[i].kind != AB_SKILL || items[i].skillIdx != skillIdx) continue;
-        if (abSkillAt(base, skillIdx, slots) != held) return false;
-        logLine("skill key %d: the game already holds this skill -- opening its target list", skillIdx + 1);
-        g_tsAdoptArmed = true;
+        uintptr_t hero = abSelectedHero(base), held = 0;
+        if (hero && safeReadPtr(hero + ACTOR_CUR_SKILL_OFF, &held) && held &&
+            abSkillAt(base, skillIdx, slots) == held)
+            g_tsAdoptArmed = true;                    // the game already holds it: adopt, no click
+        logLine("skill key %d -> the bar's skill item %d%s", skillIdx + 1, i,
+                g_tsAdoptArmed ? " (already held by the game)" : "");
         return abActivate(base, &items[i], slots, i);
     }
-    return false;
+    return false;                                     // no skill in that slot: the game decides
 }
 
 // ---- THE DUNGEON VIEW'S TWO PARTY-ROW ACTIONS ----

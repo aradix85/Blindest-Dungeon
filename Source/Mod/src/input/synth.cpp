@@ -396,7 +396,7 @@ bool frontEndClickElementId(int64_t id) {
 }
 
 // ---- Synthesised keyboard input ----
-struct SynthKey { uint32_t type, scancode, sym; uint16_t mod; uint32_t frame; };   // frame = not before
+struct SynthKey { uint32_t type, scancode, sym; uint16_t mod; uint32_t frame; char text[8]; };   // frame = not before
 static SynthKey g_synthKey[4];
 static int      g_synthKeyCount = 0;
 static uint32_t g_synthKeyFrame = 0xffffffffu;   // the frame we last emitted on
@@ -415,8 +415,22 @@ bool enqueueSynthKeyAt(uint32_t type, uint32_t scancode, uint32_t sym, uint16_t 
     SynthKey& k = g_synthKey[g_synthKeyCount++];
     k.type = type; k.scancode = scancode; k.sym = sym; k.mod = mod;
     k.frame = g_synthFrame + (uint32_t)(frameDelay > 0 ? frameDelay : 0);
+    k.text[0] = 0;
     return true;
 }
+
+#ifdef AX_BRIDGE
+// fork: one typed character (UTF-8) as SDL_TEXTINPUT, for the naming fields
+static const uint32_t SDL_EVT_TEXTINPUT_FORK = 0x303;
+static const uintptr_t SDL_TEXT_OFF_FORK     = 12;      // SDL_TextInputEvent: type, timestamp, windowID, text[32]
+bool enqueueSynthText(const char* utf8) {
+    if (!utf8 || !utf8[0] || !enqueueSynthKeyAt(SDL_EVT_TEXTINPUT_FORK, 0, 0, 0, 0)) return false;
+    SynthKey& k = g_synthKey[g_synthKeyCount - 1];
+    strncpy(k.text, utf8, sizeof k.text - 1);
+    k.text[sizeof k.text - 1] = 0;
+    return true;
+}
+#endif
 
 // ---- A HELD SHIFT AROUND A CLICK ----
 void synthHoldShift(int frames) {
@@ -436,6 +450,13 @@ bool emitSynthKey(void* ev) {
     g_synthKeyCount--;
     uintptr_t e = (uintptr_t)ev;
     for (int i = 0; i < SDL_EVENT_SIZE; i += 8) safeWriteU64(e + i, 0);   // clear the union
+#ifdef AX_BRIDGE
+    if (k.text[0]) {                                   // a typed character, not a key
+        safeWriteU32(e + 0x00, k.type);
+        for (int i = 0; k.text[i] && i < (int)sizeof k.text; i++) safeWriteU8(e + SDL_TEXT_OFF_FORK + i, (uint8_t)k.text[i]);
+        return true;
+    }
+#endif
     safeWriteU32(e + 0x00,               k.type);
     safeWriteU8 (e + SDL_KEY_STATE_OFF,  k.type == SDL_EVT_KEYDOWN ? 1 : 0);
     safeWriteU8 (e + SDL_KEY_REPEAT_OFF, 0);

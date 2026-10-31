@@ -107,7 +107,7 @@ BrRing& speechRing() { static BrRing r(1000); return r; }
 BrRing& logRing()    { static BrRing r(8000); return r; }
 
 // ---- Shared state: the last focus line and the key queue ----
-struct BrKey { uint32_t sym; uint16_t mod; DWORD delay; std::string name; };
+struct BrKey { uint32_t sym; uint16_t mod; DWORD delay; std::string name; std::string text; };
 
 struct BrShared {
     CRITICAL_SECTION cs;
@@ -252,7 +252,7 @@ const char* kHelp =
     "GET  /log?since=N&grep=TEXT&wait=MS&limit=K\n"
     "GET  /context\n"
     "GET  /map\n"
-    "POST /input?gap=MS   body: keys, e.g. \"down down enter\", \"shift+d\", \"wait:500\"\n"
+    "POST /input?gap=MS   body: keys, e.g. \"down down enter\", \"shift+d\", \"wait:500\", \"text:Name_Two\"\n"
     "GET  /input          POST /input?clear=1\n"
     "POST /mute           body: on|off\n";
 
@@ -349,6 +349,22 @@ int route(const std::string& method, const std::string& target, const std::strin
             for (size_t i = 0; i < b.size(); i++) {
                 if (isspace((unsigned char)b[i])) {
                     if (!tok.empty()) {
+                        if (tok.compare(0, 5, "text:") == 0) {        // typed text: one event per
+                            for (size_t c = 5; c < tok.size(); ) {     // UTF-8 character, '_' = space
+                                size_t len = 1;
+                                unsigned char lead = (unsigned char)tok[c];
+                                if (lead >= 0xF0) len = 4; else if (lead >= 0xE0) len = 3; else if (lead >= 0xC0) len = 2;
+                                BrKey k;
+                                k.sym = 0; k.mod = 0; k.delay = 0;
+                                k.text = tok.substr(c, len);
+                                if (k.text == "_") k.text = " ";
+                                k.name = "text '" + k.text + "'";
+                                add.push_back(k);
+                                c += len;
+                            }
+                            tok.clear();
+                            continue;
+                        }
                         BrKey k;
                         if (!parseKey(tok, &k)) { *resp = "unknown key: " + tok + "\n"; return 400; }
                         add.push_back(k);
@@ -593,6 +609,15 @@ void bridgePump(uintptr_t base) {
     LeaveCriticalSection(&s.cs);
     if (!have) { nextAt = 0; return; }
 
+    if (!k.text.empty()) {                              // text:... -- one typed character
+        bool ok = enqueueSynthText(k.text.c_str());
+        logLine("bridge: %s -> %s", k.name.c_str(), ok ? "queued as text input" : "QUEUE FULL");
+        nextAt = now + gap;
+        EnterCriticalSection(&s.cs);
+        s.keysSent++;
+        LeaveCriticalSection(&s.cs);
+        return;
+    }
     if (!k.sym) {                                       // wait:MS
         nextAt = now + k.delay;
         logLine("bridge: wait %lu ms", (unsigned long)k.delay);

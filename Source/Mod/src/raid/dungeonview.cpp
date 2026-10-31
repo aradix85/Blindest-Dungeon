@@ -1479,6 +1479,10 @@ static bool rvDisarmTrap(uintptr_t base, uintptr_t prop) {
             "deliberate=%u", (int)ret, before, state, (void*)armed, hidx, deliberate);
 
     if (state != OE_STATE_LIVE || armed != prop) {
+        if (!ret && state == before) {                // the game declined and nothing opened
+            logLine("trap: InteractWithTrap declined -- saying so");
+            postSpeech(axs(AXS_RV_TRAP_UNREACHABLE));
+        }
         return true;
     }
 
@@ -1546,7 +1550,10 @@ static bool rvInteractProp(uintptr_t base, uintptr_t prop) {
             (void*)curioBefore, (void*)curioNow, (void*)otherBefore, (void*)otherNow);
 
     if (state != before && (curioNow == prop || otherNow == prop)) return true;
-
+    if (!ret && state == before) {                    // the game declined and nothing opened
+        logLine("curio: InteractWithProp declined -- saying so");
+        postSpeech(axs(AXS_RV_CANT_USE_HERE));
+    }
     return true;
 }
 

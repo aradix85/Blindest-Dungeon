@@ -232,6 +232,11 @@ static bool bldRegistryId(uintptr_t base, uint32_t hash, char* out, int outsz) {
     return false;
 }
 
+// A step's cost: the game's own upgrade registry first (the records the hero trees read), the
+// typed kBldTrees table only when the registry has no requirement for that step.
+struct BldCostBuf { BldStepCost c; char cur1[40]; char cur2[40]; bool live; };
+static bool bldStepCostFor(uintptr_t base, uint32_t hash, const BldTreeDef* def, int k, BldCostBuf* b);
+
 static void bldCostText(uintptr_t base, const BldStepCost* c, char* out, int outsz) {
     out[0] = 0;
     if (!c || !c->cur1[0]) return;
@@ -378,8 +383,9 @@ static void bldTrackRowLabel(uintptr_t base, int i, char* out, int outsz) {
         bool freeUp = buyable && townEventFreeUpgrades(base, "building") > 0;
         char cost[96];
         cost[0] = 0;
-        if (!freeUp && t->def && k < t->def->steps)
-            bldCostText(base, &t->def->cost[k], cost, sizeof cost);
+        BldCostBuf cb;
+        if (!freeUp && bldStepCostFor(base, t->hash, t->def, k, &cb))
+            bldCostText(base, &cb.c, cost, sizeof cost);
         const char* curFx  = (t->fx && k <= 6 && t->fx->cur[k] >= 0) ? axs((AxStrId)t->fx->cur[k]) : "";
         const char* nextFx = (t->fx && k <  6 && t->fx->nxt[k] >= 0) ? axs((AxStrId)t->fx->nxt[k]) : "";
         char next[224];                               // "costs X, effect" / "costs X" / "effect"
@@ -3650,6 +3656,57 @@ static int haRegSteps(uintptr_t base, uint32_t hash, uint8_t* out, int max) {
     return n;
 }
 
+static bool bldStepCostFor(uintptr_t base, uint32_t hash, const BldTreeDef* def, int k, BldCostBuf* b) {
+    memset(b, 0, sizeof *b);
+    b->c.cur1 = b->cur1; b->c.cur2 = b->cur2;
+    uintptr_t req = (k >= 0 && k < 20) ? haRequirement(base, hash, (uint8_t)('a' + k)) : 0;
+    uintptr_t cb = 0, ce = 0;
+    if (req && safeReadPtr(req + HA_REQ_COST_BEG, &cb) && safeReadPtr(req + HA_REQ_COST_END, &ce) &&
+        cb && ce > cb && (ce - cb) % HA_COST_STRIDE == 0 && (ce - cb) / HA_COST_STRIDE <= 8) {
+        int nc = (int)((ce - cb) / HA_COST_STRIDE), kept = 0;
+        for (int c = 0; c < nc && kept < 2; c++) {
+            uintptr_t cost = cb + (uintptr_t)c * HA_COST_STRIDE;
+            uint32_t amt = 0;
+            char type[40] = { 0 };
+            if (!safeReadU32(cost + HA_COST_AMOUNT, &amt) || (int)amt <= 0) continue;   // "gold: 0" rows
+            if (!safeReadCStr(cost + HA_COST_TYPE, type, sizeof type) || !type[0]) continue;
+            if (kept == 0) { strncpy(b->cur1, type, sizeof b->cur1 - 1); b->c.amt1 = (int)amt; }
+            else           { strncpy(b->cur2, type, sizeof b->cur2 - 1); b->c.amt2 = (int)amt; }
+            kept++;
+        }
+        if (kept > 0) {
+            b->live = true;
+            static uint32_t s_seen[32]; static int s_nseen = 0;   // one log line per tree
+            bool seen = false;
+            for (int i = 0; i < s_nseen; i++) if (s_seen[i] == hash) seen = true;
+            if (!seen && s_nseen < 32) {
+                s_seen[s_nseen++] = hash;
+                logLine("bldcost: tree 0x%x step %c read live: %d %s + %d %s", hash, 'a' + k,
+                        b->c.amt1, b->cur1, b->c.amt2, b->cur2);
+            }
+            if (def && k < def->steps && def->cost[k].cur1[0] &&
+                (def->cost[k].amt1 != b->c.amt1 || strcmp(def->cost[k].cur1, b->cur1) != 0 ||
+                 def->cost[k].amt2 != b->c.amt2)) {
+                static uint32_t s_noted = 0;           // once per tree: the typed table drifted
+                if (s_noted != (hash ^ (uint32_t)k)) {
+                    s_noted = hash ^ (uint32_t)k;
+                    logLine("bldcost: tree %s step %c -- live %d %s + %d %s, table %d %s + %d %s",
+                            def->id, 'a' + k, b->c.amt1, b->cur1, b->c.amt2, b->cur2,
+                            def->cost[k].amt1, def->cost[k].cur1, def->cost[k].amt2, def->cost[k].cur2);
+                }
+            }
+            return true;
+        }
+    }
+    if (def && k >= 0 && k < def->steps && def->cost[k].cur1[0]) {
+        strncpy(b->cur1, def->cost[k].cur1, sizeof b->cur1 - 1);
+        strncpy(b->cur2, def->cost[k].cur2, sizeof b->cur2 - 1);
+        b->c.amt1 = def->cost[k].amt1; b->c.amt2 = def->cost[k].amt2;
+        return true;
+    }
+    return false;
+}
+
 bool haPurchased(uintptr_t base, uint32_t hash, uint8_t code, uint32_t guid) {
     uint32_t all = 0;
     if (safeReadU32(base + HA_ALLBOUGHT_RVA, &all) && (all & 0xff)) return true;
@@ -5522,9 +5579,10 @@ bool routeBldKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repeat) {
             postSpeech(axs(AXS_BLD_TRACK_NOTHING_NOW));
             return true;
         }
-        if (t->def && t->nextIdx < t->def->steps &&
-            townEventFreeUpgrades(base, "building") <= 0) {
-            const BldStepCost* c = &t->def->cost[t->nextIdx];
+        BldCostBuf cbuf;
+        if (townEventFreeUpgrades(base, "building") <= 0 &&
+            bldStepCostFor(base, t->hash, t->def, t->nextIdx, &cbuf)) {
+            const BldStepCost* c = &cbuf.c;
             int have1 = 0, have2 = 0;               // an absent wallet entry counts as zero
             if (c->cur1[0]) resWalletAmount(base, resHash(c->cur1), &have1);
             if (c->cur2[0]) resWalletAmount(base, resHash(c->cur2), &have2);

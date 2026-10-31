@@ -598,6 +598,29 @@ static bool brPushText(const char* utf8) {
     return push(ev) == 1;
 }
 
+// While a text field is open the game reads its keys the way it reads typed characters, so
+// Enter, Backspace and the arrows also go through SDL's own queue then.
+static bool brPushKey(uint32_t type, uint32_t sym, uint16_t mod) {
+    typedef int (__cdecl *PushFn)(void*);
+    static PushFn push = nullptr; static bool tried = false;
+    if (!tried) {
+        tried = true;
+        HMODULE m = GetModuleHandleA("SDL2.dll");
+        if (m) push = (PushFn)GetProcAddress(m, "SDL_PushEvent");
+    }
+    if (!push) return false;
+    unsigned char ev[56] = { 0 };
+    uint32_t ts = GetTickCount(), scan = klScancodeForKey(sym);
+    uint8_t state = (type == SDL_EVT_KEYDOWN) ? 1 : 0;
+    uint32_t mod32 = mod;
+    memcpy(ev + 0, &type, 4); memcpy(ev + 4, &ts, 4);
+    ev[SDL_KEY_STATE_OFF] = state;
+    memcpy(ev + SDL_KEY_SCAN_OFF, &scan, 4);
+    memcpy(ev + SDL_KEY_SYM_OFF, &sym, 4);
+    memcpy(ev + SDL_KEY_MOD_OFF, &mod32, 2);
+    return push(ev) == 1;
+}
+
 static void brServeSnapshot(uintptr_t base) {
     BrSnap& m = snap();
     EnterCriticalSection(&m.cs);
@@ -615,13 +638,15 @@ static void brServeSnapshot(uintptr_t base) {
 
 void bridgePump(uintptr_t base) {
     static bool  upPending = false;
+    static bool  upPushed  = false;                     // the press went through SDL_PushEvent
     static BrKey up;
     static DWORD nextAt = 0;
     DWORD now = GetTickCount();
     brServeSnapshot(base);
 
     if (upPending) {                                    // the release half, one frame later
-        axRoutePadKey(base, SDL_EVT_KEYUP, up.sym, up.mod, 0, false);
+        if (!upPushed) axRoutePadKey(base, SDL_EVT_KEYUP, up.sym, up.mod, 0, false);
+        else           brPushKey(SDL_EVT_KEYUP, up.sym, up.mod);
         upPending = false;
         return;
     }
@@ -657,9 +682,15 @@ void bridgePump(uintptr_t base) {
         g_preambleHold = false;                         // a bridge key never passes through there
         logLine("bridge: preamble hold released by a bridge key");
     }
-    bool claimed = axRoutePadKey(base, SDL_EVT_KEYDOWN, k.sym, k.mod, 0, true);
-    logLine("bridge: key \"%s\" sym=0x%x mod=0x%x -> %s", k.name.c_str(), k.sym, (unsigned)k.mod,
-            claimed ? "claimed by the mod" : "passed to the game");
+    upPushed = g_textInputActive && brPushKey(SDL_EVT_KEYDOWN, k.sym, k.mod);
+    bool claimed = false;
+    if (upPushed) logLine("bridge: key \"%s\" sym=0x%x -> pushed into SDL's queue (text field open)",
+                          k.name.c_str(), k.sym);
+    else {
+        claimed = axRoutePadKey(base, SDL_EVT_KEYDOWN, k.sym, k.mod, 0, true);
+        logLine("bridge: key \"%s\" sym=0x%x mod=0x%x -> %s", k.name.c_str(), k.sym, (unsigned)k.mod,
+                claimed ? "claimed by the mod" : "passed to the game");
+    }
     upPending = true;
     up = k;
     nextAt = now + gap;

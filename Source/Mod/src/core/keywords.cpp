@@ -145,7 +145,12 @@ bool axKeywordTerm(int id, char* out, int outsz) {
 }
 
 static void kwLine(int t, char* out, int outsz) {
-    _snprintf(out, outsz, axs(AXS_KW_DEF_FMT), g_kwTerms[t].term, g_kwTerms[t].def);
+    // Fenced: a definition explains its own abbreviation ("HP: Short for ..."), so expanding
+    // the abbreviations inside it would turn it into nonsense.
+    char line[KW_TERM_SZ + KW_DEF_SZ + 8];
+    _snprintf(line, sizeof line, axs(AXS_KW_DEF_FMT), g_kwTerms[t].term, g_kwTerms[t].def);
+    line[sizeof line - 1] = 0;
+    _snprintf(out, outsz, "%c%s%c", AX_NOEXPAND_OPEN, line, AX_NOEXPAND_CLOSE);
     out[outsz - 1] = 0;
 }
 
@@ -186,7 +191,7 @@ void axTipGlueKeywords(char* buf, int bufsz) {
     if (axKeywordsMode() != AX_KEYWORDS_SPOKEN) return;
     if (g_fdComposingLabel) return;                 // a search label never carries a definition
     for (int h = 0; h < nh; h++) {
-        char line[KW_TERM_SZ + KW_DEF_SZ + 8];
+        char line[KW_TERM_SZ + KW_DEF_SZ + 12];
         kwLine(g_kwPend[h], line, sizeof line);
         axTipGlueKeywordLine(buf, bufsz, line);     // the glue that notes nothing back
     }

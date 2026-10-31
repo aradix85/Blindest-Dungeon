@@ -594,7 +594,7 @@ static int rrLevelOfXp(uintptr_t base, uint32_t xp) {
     return level;
 }
 
-static bool rrXpProgress(uintptr_t base, uint32_t xp, int* intoOut, int* spanOut, bool* maxOut) {
+bool resolveXpProgress(uintptr_t base, uint32_t xp, int* intoOut, int* spanOut, bool* maxOut) {
     uintptr_t tbl = 0, begin = 0, end = 0;
     if (!safeReadPtr(base + RESOLVE_TABLE_RVA, &tbl) || tbl <= 0x10000) return false;
     if (!safeReadPtr(tbl + RESOLVE_VEC_BEGIN, &begin) || begin <= 0x10000) return false;
@@ -671,7 +671,7 @@ static bool rrHeroRowText(uintptr_t base, int heroIdx, int row, char* out, int o
         }
         // The bar the game draws under that line, spoken as numbers.
         int into = 0, span = 0; bool maxed = false;
-        if (rrXpProgress(base, liveXp, &into, &span, &maxed)) {
+        if (resolveXpProgress(base, liveXp, &into, &span, &maxed)) {
             size_t n = strlen(out);
             if (maxed) _snprintf(out + n, outsz - (int)n, " %s", axs(AXS_RR_RANK_MAXED));
             else       { char bar[160];
@@ -1055,8 +1055,7 @@ bool routeResultsKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repeat)
             if (item && invItemIsTrinket(item)) {
                 InvCard c;
                 invCardRead(base, item, &c);
-                c.desc[0]  = 0;                        // the results rows never spoke flavour text
-                c.value[0] = 0;                        // ...nor the value: this screen shows none
+                c.value[0] = 0;                        // this screen shows no value
                 ln = invCardLines(&c, lines, 1, AB_TIP_MAX_LINES);
             }
         }

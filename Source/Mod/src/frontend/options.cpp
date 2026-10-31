@@ -229,18 +229,22 @@ bool resolveOptions(uintptr_t base, uintptr_t /*tbwVtbl*/, int64_t id,
         if (vtype == 0) {                            // enum: the value is a STRING, not an int
             if (strcmp(name, "language") != 0) {
                 char ev[64];
-                if (readOptionValueStr(base, chosen, ev, sizeof ev)) {
-                    char key[96] = { 0 };
-                    if (strcmp(name, "subtitles") == 0)
-                        _snprintf(key, sizeof key, "options_value_subtitles_%s", ev);
-                    else if (strcmp(name, "town_events") == 0 || strcmp(name, "never_again") == 0)
+                if (readOptionValueStr(base, chosen, ev, sizeof ev) && ev[0]) {
+                    // The game words its enum values as options_value_<option>_<value> or the
+                    // shared options_value_<value>; an unworded value is spoken as written.
+                    char key[160];
+                    _snprintf(key, sizeof key, "options_value_%s_%s", name, ev);
+                    key[sizeof key - 1] = 0;
+                    bool got = resolveKey(base, key, valstr, sizeof valstr) && valstr[0];
+                    if (!got) {
                         _snprintf(key, sizeof key, "options_value_%s", ev);
-                    if (key[0]) {
                         key[sizeof key - 1] = 0;
-                        if (!resolveKey(base, key, valstr, sizeof valstr) || !valstr[0]) {
-                            strncpy(valstr, ev, sizeof valstr - 1);
-                            valstr[sizeof valstr - 1] = 0;
-                        }
+                        got = resolveKey(base, key, valstr, sizeof valstr) && valstr[0];
+                    }
+                    if (!got) {
+                        strncpy(valstr, ev, sizeof valstr - 1);
+                        valstr[sizeof valstr - 1] = 0;
+                        for (char* p = valstr; *p; p++) if (*p == '_') *p = ' ';
                     }
                 }
             } else if (strcmp(name, "language") == 0) {

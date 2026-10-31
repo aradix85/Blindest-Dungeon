@@ -152,8 +152,19 @@ static bool csTitleLine(uintptr_t base, char* out, int outsz) {
         naFrag[sizeof naFrag - 1] = 0;
     }
 
-    if (name[0] && title[0]) _snprintf(out, outsz, "%s, %s.%s%s", name, title, naFrag, resolveFrag);
-    else                     _snprintf(out, outsz, "%s.%s%s", name[0] ? name : title, naFrag, resolveFrag);
+    char xpFrag[128] = { 0 };            // the bar under the rank, as on the results screen
+    uint32_t xp = 0;
+    int into = 0, span = 0; bool maxed = false;
+    if (hero && safeReadU32(hero + HERO_RESOLVE_XP_OFF, &xp) &&
+        resolveXpProgress(base, xp, &into, &span, &maxed)) {
+        xpFrag[0] = ' ';
+        if (maxed) _snprintf(xpFrag + 1, sizeof xpFrag - 1, "%s", axs(AXS_RR_RANK_MAXED));
+        else       _snprintf(xpFrag + 1, sizeof xpFrag - 1, axs(AXS_RR_XP_TOWARD_FMT), into, span);
+        xpFrag[sizeof xpFrag - 1] = 0;
+    }
+
+    if (name[0] && title[0]) _snprintf(out, outsz, "%s, %s.%s%s%s", name, title, xpFrag, naFrag, resolveFrag);
+    else                     _snprintf(out, outsz, "%s.%s%s%s", name[0] ? name : title, xpFrag, naFrag, resolveFrag);
     out[outsz - 1] = 0;
     return true;
 }
@@ -827,8 +838,7 @@ int csTrinketTipLines(uintptr_t base, int i, char lines[AB_TIP_MAX_LINES][AB_TIP
     uint32_t amount = 0;
     if (!safeReadU32(item + ITEM_AMOUNT_OFF, &amount) || (int32_t)amount < 1) return 1;
     InvCard c;
-    invCardRead(base, item, &c);
-    c.desc[0] = 0;
+    invCardRead(base, item, &c);                     // flavour included: it is the game's prose
     return invCardLines(&c, lines, 1, AB_TIP_MAX_LINES);
 }
 

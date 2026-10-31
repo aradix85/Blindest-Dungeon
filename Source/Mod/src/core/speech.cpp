@@ -857,6 +857,12 @@ static void axExpandAbbrevText(const char* in, char* out, size_t outsz) {
     const unsigned char* s = (const unsigned char*)in;
     size_t o = 0;
     for (size_t i = 0; s[i] && o + 1 < outsz; ) {
+        if (s[i] == (unsigned char)AX_NOEXPAND_OPEN) {          // fenced: copied as written
+            for (i++; s[i] && s[i] != (unsigned char)AX_NOEXPAND_CLOSE && o + 1 < outsz; ) out[o++] = (char)s[i++];
+            if (s[i]) i++;
+            continue;
+        }
+        if (s[i] == (unsigned char)AX_NOEXPAND_CLOSE) { i++; continue; }
         size_t bestLen = 0; const char* bestFull = nullptr;
         if (!axWordBefore(s, i)) {
             for (int e = 0; e < AX_ABBREV_N; e++) {
@@ -904,6 +910,12 @@ void postSpeech(const char* text, bool interrupt, SpeechKind kind) {
     char expanded[MAILBOX_SZ];
     if (axExpandAbbreviations()) {
         axExpandAbbrevText(text, expanded, sizeof expanded);
+        text = expanded;
+    } else if (strchr(text, AX_NOEXPAND_OPEN) || strchr(text, AX_NOEXPAND_CLOSE)) {
+        size_t n = 0;                                            // no expansion: the fence goes
+        for (size_t i = 0; text[i] && n < MAILBOX_SZ - 1; i++)
+            if (text[i] != AX_NOEXPAND_OPEN && text[i] != AX_NOEXPAND_CLOSE) expanded[n++] = text[i];
+        expanded[n] = 0;
         text = expanded;
     }
     if (kind == SPK_NAV) {

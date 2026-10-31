@@ -484,7 +484,7 @@ void abStripMarkup(char* s) {
     for (char* r = s; *r; ) {
         if (*r == '{') {
             const char* e = strchr(r, '}');
-            if (!e) break;                      // unterminated: stop, keep what we already have
+            if (!e) { *w++ = *r++; continue; }  // unterminated: a literal brace, the text goes on
             r = (char*)e + 1;
             continue;
         }
@@ -2096,6 +2096,27 @@ bool abActivate(uintptr_t base, const ActionItem* it, int slotCount, int abCurso
             postSpeech(axs(AXS_AB_NO_ACTION));
             return true;
     }
+}
+
+// ---- 1-4 ON THE SKILL THE GAME ALREADY HOLDS ----
+// At a hero's turn the game re-selects the skill that hero used last. The game's own 1-4 key
+// on that skill changes nothing, so no arming edge reaches serviceGameArmedSkill and the press
+// was silent. This one case is claimed: the target list opens on the held skill.
+bool abHeldSkillHotkey(uintptr_t base, int skillIdx) {
+    if (g_tsActive || campInSkillPhase(base)) return false;
+    uintptr_t hero = abSelectedHero(base), held = 0;
+    if (!hero || !safeReadPtr(hero + ACTOR_CUR_SKILL_OFF, &held) || !held) return false;
+    ActionItem items[AB_MAX_ITEMS];
+    const int n = abBuildBar(base, items, AB_MAX_ITEMS);
+    const int slots = abSlotCount(items, n);
+    for (int i = 0; i < n; i++) {
+        if (items[i].kind != AB_SKILL || items[i].skillIdx != skillIdx) continue;
+        if (abSkillAt(base, skillIdx, slots) != held) return false;
+        logLine("skill key %d: the game already holds this skill -- opening its target list", skillIdx + 1);
+        g_tsAdoptArmed = true;
+        return abActivate(base, &items[i], slots, i);
+    }
+    return false;
 }
 
 // ---- THE DUNGEON VIEW'S TWO PARTY-ROW ACTIONS ----

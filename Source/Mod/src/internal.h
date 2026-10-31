@@ -119,6 +119,10 @@ extern bool g_fdComposingLabel;
 bool axModTutorials();
 void axSetModTutorials(bool on);
 bool axExpandAbbreviations();
+// A FENCE no abbreviation expansion crosses: the glossary's own "HP: Short for ..." line
+// would otherwise read "health points: Short for health points". postSpeech drops both bytes.
+static const char AX_NOEXPAND_OPEN  = '\x02';
+static const char AX_NOEXPAND_CLOSE = '\x03';
 void axSetExpandAbbreviations(bool on);
 bool axSkipIntro();                    // skip the opening cinematic at launch (default on)
 void axSetSkipIntro(bool on);
@@ -517,6 +521,7 @@ void embQuestName(uintptr_t base, uintptr_t quest, char* out, int outsz);
 uintptr_t abHeroClassOf(uintptr_t hero);        // hero -> its HeroClass object (0 = unreadable)
 bool abReadF32(uintptr_t addr, float* out);     // SEH-guarded float read (sanity-bounded)
 int  csResolveLevel(uintptr_t base, uintptr_t hero);   // XP -> resolve level (the sheet's rank)
+bool resolveXpProgress(uintptr_t base, uint32_t xp, int* intoOut, int* spanOut, bool* maxOut);  // raid/results.cpp
 bool csQuirkName(uintptr_t base, const char* id, char* out, int outsz);
 void csEquipStat(uintptr_t base, char* out, int outsz, const char* key, const char* value);
 bool abHeroNameClassOf(uintptr_t base, uintptr_t hero,
@@ -592,7 +597,8 @@ static const char* const PROV_SHARD_NAME_KEY = "str_inventory_title_shard";
 static const int       TL_WALK_KIDS_MAX    = 96;        // sanity cap on any children vector
 static const int       TL_WALK_NODES_MAX   = 1024;
 static const int       TL_LIST_CELLS_MAX   = 16384;     // cap on a top-level list's cell vector
-static const int       TL_ROW_MAX          = 384;       // bytes per collected row / fragment
+static const int       TL_ROW_MAX          = 1024;      // bytes per collected row / fragment: a stress-relief
+                                                              // story runs 3-5 sentences, colour codes stripped
 static const int       TL_FRAGS_MAX        = 16;        // fragments gathered per entry
 
 // ---- Town module (town/estate.cpp): the ACTIVITY LOG + the RESOURCES BAR ----
@@ -1082,6 +1088,7 @@ bool routeActionKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repeat);
 bool routeActionToggle(uintptr_t base, uint32_t sym, uint8_t repeat);   // ` : open / close
 bool routeTargetKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repeat);
 bool abActivate(uintptr_t base, const ActionItem* it, int slotCount, int abCursor);  // Enter
+bool abHeldSkillHotkey(uintptr_t base, int skillIdx);  // 1-4 on the skill the game already holds
 bool abClickHeroRank(uintptr_t base, int rank);
 bool abBeginMoveSelected(uintptr_t base);
 bool abReorderPartyNow(uintptr_t base);          // press the "Default Party order" button

@@ -269,7 +269,7 @@ static int rvActorTurnsLeft(uintptr_t base, uintptr_t mon) {
     uint32_t state = 0;
     if (!safeReadU32(root + RAID_IN_COMBAT_OFF, &state) || state == 0) return -1;
 
-    if (rvMonsterHasType(mon, "corpse")) return -1;
+    if (!spActorIsHero(base, mon) && rvMonsterHasType(mon, "corpse")) return -1;   // a hero has no monster class
 
     uintptr_t battle = root + BATTLE_OBJ_OFF, beg = 0, end = 0;
     uint32_t idx = 0;

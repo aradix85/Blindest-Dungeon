@@ -1798,6 +1798,16 @@ static void abItemText(uintptr_t base, const ActionItem* it, int slotCount, char
             if (!isCorpse) {
                 if (abHeroStressCur(base, hero, frag, sizeof frag)) rvAppendComma(what, sizeof what, frag);
                 else logLine("actionbar portrait: stress unreadable for hero=%p", (void*)hero);
+                // No tooltip will follow (a turn start, or tooltips off): bleed, blight, stun,
+                // marks, guard and the like ride on the label, or the hero's turn hides them.
+                char cond[AB_TIP_LINE_SZ];
+                if (!axTipWanted() &&
+                    spConditionsInto(base, hero, SP_COND_ALL & ~(SP_COND_HEALTH | SP_COND_STRESS),
+                                     cond, sizeof cond) && cond[0]) {
+                    size_t cl = strlen(cond);
+                    if (cl && cond[cl - 1] == '.') cond[cl - 1] = 0;
+                    rvAppendComma(what, sizeof what, cond);
+                }
             }
             break;
         }
@@ -3309,7 +3319,7 @@ static bool tpBuildPreview(uintptr_t base, uintptr_t target, bool isMonster,
 
     float hit = 0.0f;
     if (tpHitChance(base, hero, target, &hit)) {
-        tpPhrase(clause, clausesz, "%.0f%% to hit", (double)(hit * TP_PERCENT_SCALE));
+        tpPhrase(clause, clausesz, axs(AXS_TP_HIT_FMT), (double)(hit * TP_PERCENT_SCALE));
         got++;
     } else logLine("targetinfo: hit chance unreadable");
     {
@@ -3327,26 +3337,26 @@ static bool tpBuildPreview(uintptr_t base, uintptr_t target, bool isMonster,
     if (atDeathsDoor) {
         float db = 0.0f;
         if (tpDeathblowChance(base, hero, target, skill, &db)) {
-            tpPhrase(clause, clausesz, "%.0f%% deathblow", (double)(db * TP_PERCENT_SCALE));
+            tpPhrase(clause, clausesz, axs(AXS_TP_DEATHBLOW_FMT), (double)(db * TP_PERCENT_SCALE));
             got++;
         } else logLine("targetinfo: deathblow chance unreadable");
     } else {
         int lo = 0, hi = 0;
         if (tpDamageRange(base, hero, target, skill, &lo, &hi)) {
-            tpPhrase(clause, clausesz, "%d-%d damage", lo, hi);
+            tpPhrase(clause, clausesz, axs(AXS_TP_DAMAGE_FMT), lo, hi);
             got++;
         } else logLine("targetinfo: damage range unreadable");
     }
 
     float crit = 0.0f;
     if (csStatOwnMask(hero, CS_STAT_CRIT_OFF, &crit)) {
-        tpPhrase(clause, clausesz, "%.1f%% crit", (double)(crit * TP_PERCENT_SCALE));
+        tpPhrase(clause, clausesz, axs(AXS_TP_CRIT_FMT), (double)(crit * TP_PERCENT_SCALE));
         got++;
     } else logLine("targetinfo: crit chance unreadable");
 
     int stress = 0;
     if (tpStress(hero, target, skill, isMonster, &stress)) {
-        tpPhrase(clause, clausesz, "%d stress", stress);
+        tpPhrase(clause, clausesz, axs(AXS_TP_STRESS_FMT), stress);
         got++;
     }
 
@@ -3750,7 +3760,9 @@ static bool tsBegin(uintptr_t base, uintptr_t skill, const char* skillName, int 
             if (rows[i].enemy != attack) continue;
             if (start < 0 || rows[i].slot < rows[start].slot) start = i;
         }
-    }
+    } else if (n > 0) {
+        start = 0;                                   // a move lands on its first rank too, so the
+    }                                                // opening line names where it would go
 
     logLine("targeting: begin \"%s\"%s perf=%p targets=%d start=%d", g_tsSkillName,
             isMove ? " (MOVE)" : "", (void*)perf, n, start);

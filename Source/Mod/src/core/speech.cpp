@@ -890,6 +890,13 @@ static void axExpandAbbrevText(const char* in, char* out, size_t outsz) {
     out[o] = 0;
 }
 
+bool axIsAbbreviation(const char* word) {          // would Expand abbreviations rewrite it?
+    if (!word || !word[0]) return false;
+    char out[256];
+    axExpandAbbrevText(word, out, sizeof out);
+    return strcmp(out, word) != 0;
+}
+
 void postSpeech(const char* text, bool interrupt, SpeechKind kind) {
     if (kind == SPK_AUTO) kind = interrupt ? SPK_NAV : SPK_EVENT;
 #ifdef AX_BRIDGE

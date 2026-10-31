@@ -144,13 +144,33 @@ bool axKeywordTerm(int id, char* out, int outsz) {
     return false;
 }
 
+// Where a definition's first sentence ends: . ! ? then a space or the end, or 。！？.
+static size_t kwFirstSentenceEnd(const char* d) {
+    const unsigned char* s = reinterpret_cast<const unsigned char*>(d);
+    for (size_t i = 0; s[i]; i++) {
+        if ((s[i] == '.' || s[i] == '!' || s[i] == '?') && (s[i + 1] == ' ' || !s[i + 1])) return i + 1;
+        if (s[i] == 0xE3 && s[i + 1] == 0x80 && s[i + 2] == 0x82) return i + 3;
+        if (s[i] == 0xEF && s[i + 1] == 0xBC && (s[i + 2] == 0x81 || s[i + 2] == 0x9F)) return i + 3;
+    }
+    return strlen(d);
+}
+
 static void kwLine(int t, char* out, int outsz) {
-    // Fenced: a definition explains its own abbreviation ("HP: Short for ..."), so expanding
-    // the abbreviations inside it would turn it into nonsense.
-    char line[KW_TERM_SZ + KW_DEF_SZ + 8];
-    _snprintf(line, sizeof line, axs(AXS_KW_DEF_FMT), g_kwTerms[t].term, g_kwTerms[t].def);
-    line[sizeof line - 1] = 0;
-    _snprintf(out, outsz, "%c%s%c", AX_NOEXPAND_OPEN, line, AX_NOEXPAND_CLOSE);
+    // An abbreviation's own entry explains it ("HP: Short for "health points". ..."): the term
+    // and that first sentence are fenced from Expand abbreviations, or the line would say
+    // "health points: Short for health points". The rest of every definition is expanded.
+    const KwTerm& k = g_kwTerms[t];
+    char term[KW_TERM_SZ + 4], def[KW_DEF_SZ + 4];
+    _snprintf(term, sizeof term, "%c%s%c", AX_NOEXPAND_OPEN, k.term, AX_NOEXPAND_CLOSE);
+    term[sizeof term - 1] = 0;
+    if (axIsAbbreviation(k.term)) {
+        size_t e = kwFirstSentenceEnd(k.def);
+        _snprintf(def, sizeof def, "%c%.*s%c%s", AX_NOEXPAND_OPEN, (int)e, k.def, AX_NOEXPAND_CLOSE, k.def + e);
+    } else {
+        _snprintf(def, sizeof def, "%s", k.def);
+    }
+    def[sizeof def - 1] = 0;
+    _snprintf(out, outsz, axs(AXS_KW_DEF_FMT), term, def);
     out[outsz - 1] = 0;
 }
 

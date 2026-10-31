@@ -123,6 +123,7 @@ bool axExpandAbbreviations();
 // would otherwise read "health points: Short for health points". postSpeech drops both bytes.
 static const char AX_NOEXPAND_OPEN  = '\x02';
 static const char AX_NOEXPAND_CLOSE = '\x03';
+bool axIsAbbreviation(const char* word);   // core/speech.cpp: the expander would rewrite it
 void axSetExpandAbbreviations(bool on);
 bool axSkipIntro();                    // skip the opening cinematic at launch (default on)
 void axSetSkipIntro(bool on);

@@ -345,7 +345,7 @@ int feCollectFamilyByX(uintptr_t base, uint32_t family, uint32_t ownerTag,
 int feCollectByOwner(uintptr_t base, uint32_t ownerTag, uintptr_t* out, int64_t* idOut,
                      float* xOut, int maxOut);
 void frontEndClickCursor();                    // click WHERE THE CURSOR IS (no target re-derive)
-bool frontEndClickElementId(int64_t id);        // move onto a specific element, then click it
+bool frontEndClickElementId(int64_t id, int dwell = 0);   // dwell: extra hover frames        // move onto a specific element, then click it
 void feDumpFocusVector(const char* why);
 extern bool g_cursorValid;                      // cursor has been placed on this screen
 void serviceInputProbe(uintptr_t base);

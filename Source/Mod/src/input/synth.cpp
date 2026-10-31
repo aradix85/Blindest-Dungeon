@@ -370,7 +370,7 @@ void feDumpFocusVector(const char* why) {
     }
 }
 
-bool frontEndClickElementId(int64_t id) {
+bool frontEndClickElementId(int64_t id, int dwell) {
     if (clickQueued()) {                                // a click is already in flight
         logLine("fe-click id=0x%llx REFUSED: a click is already queued (n=%d)",
                 (unsigned long long)id, g_synthCount);
@@ -387,8 +387,9 @@ bool frontEndClickElementId(int64_t id) {
         return false;
     }
     moveCursorTo(tx, ty);                               // pins the globals + queues the hover (frame 0)
-    enqueueSynth(SDL_EVT_MOUSEBUTTONDOWN, SDL_BUTTON_LEFT, 1, 1);
-    enqueueSynth(SDL_EVT_MOUSEBUTTONUP,   SDL_BUTTON_LEFT, 0, 2);
+    if (dwell < 0) dwell = 0;                           // extra frames for the hover to latch
+    enqueueSynth(SDL_EVT_MOUSEBUTTONDOWN, SDL_BUTTON_LEFT, 1, (uint32_t)(1 + dwell));
+    enqueueSynth(SDL_EVT_MOUSEBUTTONUP,   SDL_BUTTON_LEFT, 0, (uint32_t)(2 + dwell));
     g_axSpokenId = id;
     g_axLastSpoken[0] = 0;
     logLine("fe-click id=0x%llx at (%.0f,%.0f)", (unsigned long long)id, tx, ty);
@@ -453,6 +454,8 @@ bool emitSynthKey(void* ev) {
 #ifdef AX_BRIDGE
     if (k.text[0]) {                                   // a typed character, not a key
         safeWriteU32(e + 0x00, k.type);
+        safeWriteU32(e + 0x04, (uint32_t)GetTickCount());   // timestamp
+        safeWriteU32(e + 0x08, 1);                         // windowID: the game's only window
         for (int i = 0; k.text[i] && i < (int)sizeof k.text; i++) safeWriteU8(e + SDL_TEXT_OFF_FORK + i, (uint8_t)k.text[i]);
         return true;
     }

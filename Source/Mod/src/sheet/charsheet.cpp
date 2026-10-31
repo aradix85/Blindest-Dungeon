@@ -1628,7 +1628,7 @@ bool routeCharSheetKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repea
         if (n <= 0) return false;                     // the buttons vanished; not ours after all
         if (g_csRow < 0) { csMoveRow(base, 1); return true; }  // land on button 1, read it first
         if (g_csRow >= n) g_csRow = n - 1;
-        if (frontEndClickElementId(g_csManageIds[g_csRow])) {
+        if (frontEndClickElementId(g_csManageIds[g_csRow], 3)) {   // the cursor was parked: let the hover latch
             logLine("charsheet manage: clicked \"%s\" (0x%llx)",
                     g_csManageNames[g_csRow], (unsigned long long)g_csManageIds[g_csRow]);
             if (g_csManageIds[g_csRow] == CS_MANAGE_RENAME_ID)

@@ -569,6 +569,35 @@ void bridgeStart() {
 }
 
 // ---- The key pump (main thread) ----
+// A typed character goes into SDL's own queue (SDL_PushEvent), so it passes the event
+// watchers and filters a real keyboard's SDL_TEXTINPUT passes; returned from the PollEvent hook
+// the game's text field never saw it.
+static bool brPushText(const char* utf8) {
+    typedef int (__cdecl *PushFn)(void*);
+    typedef void* (__cdecl *FocusFn)();
+    typedef uint32_t (__cdecl *WinIdFn)(void*);
+    static PushFn push = nullptr; static FocusFn focus = nullptr; static WinIdFn winId = nullptr;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        HMODULE m = GetModuleHandleA("SDL2.dll");
+        if (m) {
+            push  = (PushFn)GetProcAddress(m, "SDL_PushEvent");
+            focus = (FocusFn)GetProcAddress(m, "SDL_GetKeyboardFocus");
+            winId = (WinIdFn)GetProcAddress(m, "SDL_GetWindowID");
+        }
+        logLine("bridge: SDL_PushEvent %s", push ? "found" : "MISSING -- text input falls back to the synth queue");
+    }
+    if (!push) return enqueueSynthText(utf8);
+    unsigned char ev[56] = { 0 };
+    uint32_t type = 0x303, ts = GetTickCount(), wid = 0;
+    void* w = focus ? focus() : nullptr;
+    if (w && winId) wid = winId(w);
+    memcpy(ev + 0, &type, 4); memcpy(ev + 4, &ts, 4); memcpy(ev + 8, &wid, 4);
+    strncpy((char*)ev + 12, utf8, 31);
+    return push(ev) == 1;
+}
+
 static void brServeSnapshot(uintptr_t base) {
     BrSnap& m = snap();
     EnterCriticalSection(&m.cs);
@@ -610,7 +639,7 @@ void bridgePump(uintptr_t base) {
     if (!have) { nextAt = 0; return; }
 
     if (!k.text.empty()) {                              // text:... -- one typed character
-        bool ok = enqueueSynthText(k.text.c_str());
+        bool ok = brPushText(k.text.c_str());
         logLine("bridge: %s -> %s", k.name.c_str(), ok ? "queued as text input" : "QUEUE FULL");
         nextAt = now + gap;
         EnterCriticalSection(&s.cs);

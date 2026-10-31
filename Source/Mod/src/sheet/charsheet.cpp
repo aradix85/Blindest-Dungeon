@@ -1628,7 +1628,7 @@ bool routeCharSheetKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repea
         if (n <= 0) return false;                     // the buttons vanished; not ours after all
         if (g_csRow < 0) { csMoveRow(base, 1); return true; }  // land on button 1, read it first
         if (g_csRow >= n) g_csRow = n - 1;
-        if (frontEndClickElementId(g_csManageIds[g_csRow], 3)) {   // the cursor was parked: let the hover latch
+        if (frontEndClickElementId(g_csManageIds[g_csRow])) {
             logLine("charsheet manage: clicked \"%s\" (0x%llx)",
                     g_csManageNames[g_csRow], (unsigned long long)g_csManageIds[g_csRow]);
             if (g_csManageIds[g_csRow] == CS_MANAGE_RENAME_ID)
@@ -1923,12 +1923,23 @@ void checkTownRename(uintptr_t base) {
         return;
     }
 
+    // The first click after the sheet opens can open the box and close it in the same frame
+    // (SDL_StartTextInput then SDL_StopTextInput); a second click, cursor already on the
+    // button, opens it for good. So one quiet retry before the failure is spoken.
+    static bool s_trRetried = false;
     if (g_trOpenWatchUntil && !on && GetTickCount() > g_trOpenWatchUntil) {
         g_trOpenWatchUntil = 0;
+        if (!s_trRetried && frontEndClickElementId(CS_MANAGE_RENAME_ID)) {
+            s_trRetried = true;
+            g_trOpenWatchUntil = GetTickCount() + 1500;
+            logLine("townrename: the rename click made no observable change -- clicking once more");
+            return;
+        }
+        s_trRetried = false;
         logLine("townrename: the rename click made no observable change");
         postSpeech(axs(AXS_CS_RENAME_NO_BOX));
     }
-    if (on) g_trOpenWatchUntil = 0;
+    if (on) { g_trOpenWatchUntil = 0; s_trRetried = false; }
 }
 
 // ---- PAD FOCUS FOLLOWER ----

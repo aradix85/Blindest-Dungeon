@@ -37,6 +37,29 @@ bool subMovieTrackUp(uintptr_t base) {
 
 // ---- THE CUTSCENE KEY GUARD ----
 static bool   s_mvUp       = false;   // the last state axIsMovie observed (edge log)
+static const char* const kOpeningMovie = "house_of_ruin";   // video\house_of_ruin.ogv, played at launch
+// The player ignores a skip key in the first moments of the cinematic, so press Enter after a
+// second and again every second while the track is still up.
+static const DWORD INTRO_SKIP_RETRY_MS  = 1000;
+static const int   INTRO_SKIP_MAX_TRIES = 8;
+static bool  s_introSkipPending = false;
+static int   s_introSkipTries   = 0;
+static DWORD s_introSkipNextTry = 0;
+
+static void serviceIntroSkip() {
+    if (!s_introSkipPending || (long)(GetTickCount() - s_introSkipNextTry) < 0) return;
+    if (s_introSkipTries >= INTRO_SKIP_MAX_TRIES) {
+        s_introSkipPending = false;
+        logLine("movie: the opening cinematic did not take the skip key -- giving up");
+        return;
+    }
+    uint32_t scan = klScancodeForKey(SDLK_RETURN);
+    enqueueSynthKeyAt(SDL_EVT_KEYDOWN, scan, SDLK_RETURN, 0, 0);
+    enqueueSynthKeyAt(SDL_EVT_KEYUP,   scan, SDLK_RETURN, 0, 1);
+    s_introSkipTries++;
+    s_introSkipNextTry = GetTickCount() + INTRO_SKIP_RETRY_MS;
+    logLine("movie: skip key %d of %d for the opening cinematic", s_introSkipTries, INTRO_SKIP_MAX_TRIES);
+}
 static int    s_mvFnSettings = -2;
 
 bool axIsMovie() {
@@ -52,8 +75,21 @@ bool axIsMovie() {
             if (!safeReadCStr(movie + MOVIE_NAME_OFF, name, sizeof name)) strcpy(name, "?");
             logLine("movie: track UP -- %p, %u subtitle range(s), name \"%.40s\" -- plain keys but "
                     "Enter are held", (void*)movie, (unsigned)((re - rb) / MOVIE_RANGE_BYTES), name);
+            // The opening cinematic plays at every launch: arm the skip once per session, when
+            // the player asked for it (F10 > Announcements). serviceIntroSkip presses Enter.
+            static bool s_introSeen = false;
+            if (!s_introSeen && strcmp(name, kOpeningMovie) == 0) {
+                s_introSeen = true;
+                if (axSkipIntro()) {
+                    s_introSkipPending = true;
+                    s_introSkipTries   = 0;
+                    s_introSkipNextTry = GetTickCount() + INTRO_SKIP_RETRY_MS;
+                    logLine("movie: the opening cinematic will be skipped (skip_intro=1)");
+                }
+            }
         } else {
             logLine("movie: track down -- keys released to the game");
+            s_introSkipPending = false;
         }
     }
     return up;
@@ -73,6 +109,7 @@ bool routeMovieKey(uintptr_t base, uint32_t sym, uint16_t mod, uint8_t repeat) {
 
 void serviceSubtitles(uintptr_t base) {
     if (!base) return;
+    serviceIntroSkip();                                 // per frame, subtitles on or off
     if (!axReadSubtitles()) { s_subLast[0] = 0; return; }
 
     uintptr_t app = base + DARKEST_APP_RVA;

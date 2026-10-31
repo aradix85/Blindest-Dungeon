@@ -35,6 +35,7 @@ struct AxDebugLogState {
     volatile bool controlHints;
     volatile bool autoTooltips;
     volatile bool expandAbbrev;
+    volatile bool skipIntro;
     volatile int  keywordDefs;
     volatile int  tipWrap;
     volatile bool modTutorials;
@@ -47,7 +48,7 @@ struct AxDebugLogState {
     int  sapiVolume;
     AxDebugLogState() : enabled(false), readSubtitles(true), readSubtitlesExplicit(false),
                         barks(AX_BARKS_ON), barksExplicit(false), checkUpdates(true), positionCounts(true),
-                        controlHints(true), autoTooltips(true), expandAbbrev(true), keywordDefs(AX_KEYWORDS_SPOKEN),
+                        controlHints(true), autoTooltips(true), expandAbbrev(true), skipIntro(true), keywordDefs(AX_KEYWORDS_SPOKEN),
                         tipWrap(AX_TIPWRAP_SPOKEN), modTutorials(true), modEnabled(true), speechHandler(AX_SPEECH_AUTO),
                         sapiRate(-1), sapiVolume(-1) {
         InitializeCriticalSection(&g_logCs);
@@ -97,6 +98,7 @@ struct AxDebugLogState {
                     else if (strncmp(p, "control_hints=", 14) == 0)   controlHints   = (p[14] != '0');
                     else if (strncmp(p, "auto_tooltips=", 14) == 0)   autoTooltips   = (p[14] != '0');
                     else if (strncmp(p, "expand_abbreviations=", 21) == 0) expandAbbrev = (p[21] != '0');
+                    else if (strncmp(p, "skip_intro=", 11) == 0)       skipIntro      = (p[11] != '0');
                     else if (strncmp(p, "glossary_definitions=", 21) == 0) {
                         int v = p[21] - '0';
                         if (v >= 0 && v < AX_KEYWORDS_MODES) keywordDefs = v;
@@ -150,6 +152,7 @@ static void axSaveIni() {
     fprintf(f, "control_hints=%d\n", s.controlHints ? 1 : 0);
     fprintf(f, "auto_tooltips=%d\n", s.autoTooltips ? 1 : 0);
     fprintf(f, "expand_abbreviations=%d\n", s.expandAbbrev ? 1 : 0);
+    fprintf(f, "skip_intro=%d\n", s.skipIntro ? 1 : 0);
     fprintf(f, "glossary_definitions=%d\n", (int)s.keywordDefs);
     fprintf(f, "tooltip_wrapping=%d\n", (int)s.tipWrap);
     fprintf(f, "mod_tutorials=%d\n", s.modTutorials ? 1 : 0);
@@ -214,6 +217,11 @@ void axSetAutoTooltips(bool on) {
 bool axExpandAbbreviations() { return axDebugState().expandAbbrev; }
 void axSetExpandAbbreviations(bool on) {
     axDebugState().expandAbbrev = on;
+    axSaveIni();
+}
+bool axSkipIntro() { return axDebugState().skipIntro; }
+void axSetSkipIntro(bool on) {
+    axDebugState().skipIntro = on;
     axSaveIni();
 }
 int  axKeywordsMode() { return axDebugState().keywordDefs; }

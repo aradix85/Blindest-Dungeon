@@ -90,6 +90,8 @@ static int  smTutGet()       { return axModTutorials() ? 0 : 1; }
 static void smTutSet(int v)  { axSetModTutorials(v == 0); }
 static int  smAbbrGet()      { return axExpandAbbreviations() ? 0 : 1; }
 static void smAbbrSet(int v) { axSetExpandAbbreviations(v == 0); }
+static int  smIntroGet()     { return axSkipIntro() ? 0 : 1; }
+static void smIntroSet(int v){ axSetSkipIntro(v == 0); }
 static const SmValRow kSmAnn[] = {
     { AXS_SM_ANN_SUBTITLES, 2, nullptr, smSubsGet, smSubsSet, 0,
       { AXS_VALUE_ON, AXS_VALUE_OFF }, nullptr,
@@ -112,6 +114,9 @@ static const SmValRow kSmAnn[] = {
     { AXS_SM_ANN_ABBREV, 2, nullptr, smAbbrGet, smAbbrSet, 0,
       { AXS_VALUE_ON, AXS_VALUE_OFF }, nullptr,
       { AXS_SM_ANN_ABBREV_ON, AXS_SM_ANN_ABBREV_OFF }, nullptr },
+    { AXS_SM_ANN_SKIPINTRO, 2, nullptr, smIntroGet, smIntroSet, 0,
+      { AXS_VALUE_ON, AXS_VALUE_OFF }, nullptr,
+      { AXS_SM_ANN_SKIPINTRO_ON, AXS_SM_ANN_SKIPINTRO_OFF }, nullptr },
     { AXS_SM_ANN_KEYWORDS, AX_KEYWORDS_MODES, nullptr, axKeywordsMode, axSetKeywordsMode, 0,
       { AXS_SM_ANN_KW_V_SPOKEN, AXS_SM_ANN_KW_V_BUFFER, AXS_VALUE_OFF }, nullptr,
       { AXS_SM_ANN_KW_SPOKEN, AXS_SM_ANN_KW_BUFFER, AXS_SM_ANN_KW_OFF }, nullptr },

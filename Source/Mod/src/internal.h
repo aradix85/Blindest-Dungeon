@@ -120,6 +120,8 @@ bool axModTutorials();
 void axSetModTutorials(bool on);
 bool axExpandAbbreviations();
 void axSetExpandAbbreviations(bool on);
+bool axSkipIntro();                    // skip the opening cinematic at launch (default on)
+void axSetSkipIntro(bool on);
 bool axTutorialSeen(const char* id);
 void axMarkTutorialSeen(const char* id);
 // ---- Speech OUTPUT settings ----
@@ -227,6 +229,7 @@ extern bool  g_reopenBlocked;
 
 // ---- Front-end module (frontend/loading.cpp) ----
 void checkPreamble(uintptr_t base, uintptr_t display);
+bool preambleReannounce(uintptr_t base);          // comma on the preamble: re-read it (false = not up)
 void checkLoadingScreen(uintptr_t base);
 void lsReannounce(uintptr_t base);        // AX_LOADING's re-introduce hook (the / key, and a
                                           //   modal closing over it) — title + tip, read live
